@@ -1,0 +1,80 @@
+let 
+      BaseUrl         = "HTTP_URL" (example: "https://google.com"),
+      Token           = "API_KEY_VALUE" (example: "1129sfva0s89gfa98fs09a-b0=="),
+      // (URL path parameter examples)
+      EntitiesPerPage = 1000,
+      StartTime       = "2022-01-01",
+      EndTime         = Date.ToText(Date.From(DateTime.LocalNow())),
+
+      // Wait function alternative
+      WaitFor = (producer as function, interval as function, optional count as number) as any =>
+              let
+                  list = List.Generate(
+                      () => {0, null},
+                      (state) => state{0} <> null and (count = null or state{0} < count),
+                      (state) => if state{1} <> null
+                          then {null, state{1}}
+                          else {1 + state{0}, Function.InvokeAfter(() => producer(state{0}), interval(state{0}))},
+                      (state) => state{1})
+              in
+                  List.Last(list),
+
+      // Wait function alternative
+      WaitFor2 = (action as function, duration) => 
+          if (List.Count(
+           List.Generate(
+            () => DateTimeZone.LocalNow() + duration, 
+            (x) => DateTimeZone.LocalNow() < x, 
+            (x) => x)
+            ) = 0) 
+             then null else action(),
+
+      GetJson = (Url) =>
+      // Wait function alternative
+          Function.InvokeAfter(() =>
+              let Options = [Headers=[ #"Authorization" = "Api-Key " & Token ], Timeout=#duration(0,0,0,200)],
+                  RawData = Web.Contents(Url, Options),
+                  Json    = Json.Document(RawData)
+              in  Json, #duration(0,0,0,5)),
+
+      GetEntityCount = () =>
+          let Url   = BaseUrl & "?startTime=" & StartTime & "&endTime=" & EndTime,
+              Json  = GetJson(Url),
+              Count = Json[#"total"]
+          in  Count,
+
+      GetPage = (Index) =>
+          let Skip  = "&offset=" & Text.From(Index * EntitiesPerPage),
+              Top   = "&limit=" & Text.From(EntitiesPerPage),
+              Url   = BaseUrl & "?startTime=" & StartTime & "&endTime=" & EndTime & Skip & Top,
+              Json  = GetJson(Url),
+              Value1 = Json[#"data"],
+              Value = Table.FromList(Value1, Splitter.SplitByNothing())
+          in
+              Value,
+
+      GenerateByPage = (getNextPage as function) as table =>
+          let
+              listOfPages = List.Generate(
+                  () => 0,            // get the first page of data
+                  each _ < PageCount,     // stop when the function returns null
+                  each _ + 1, // pass the previous page to the next function call
+                  (pageNumber) => getNextPage(pageNumber)
+              ),
+              tableOfPages = Table.FromList(listOfPages, Splitter.SplitByNothing(), {"Column1"}),
+              firstRow = tableOfPages{0}?
+          in
+              if (firstRow = null) then
+                  Table.FromRows({})
+              else
+                  Value.ReplaceType(
+                      Table.ExpandTableColumn(tableOfPages, "Column1", Table.ColumnNames(firstRow[Column1])),
+                      Value.Type(firstRow[Column1])
+                  ),
+
+      EntityCount = GetEntityCount(),
+      PageCount   = Number.RoundUp(EntityCount / EntitiesPerPage),
+      Table       = GenerateByPage(GetPage),
+      #"Expanded Column1" = Table.ExpandRecordColumn(Table, "Column1", {"NAME", "BOOKING_DATE", "BOOKING_TIME", "START_DATE", "START_TIME", "FINISH_DATE", "FINISH_TIME", "CHECKIN_DATE", "CHECKIN_TIME", "CHECKOUT_DATE", "CHECKOUT_TIME", "CANCEL_DATE", "CANCEL_TIME", "SEAT", "ASSET_TYPE", "REGION", "FLOOR", "SITE", "REQUESTOR", "EMAIL", "DEPARTMENT", "ID", "STATUS", "AUTO_CHECKOUT", "CHECKIN_NOTIFICATION", "EXTERNAL", "SCORE"})
+  in
+      #"Expanded Column1"
