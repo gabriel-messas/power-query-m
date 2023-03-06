@@ -1,6 +1,8 @@
-let 
-      BaseUrl         = "HTTP_URL" (example: "https://google.com"),
-      Token           = "API_KEY_VALUE" (example: "1129sfva0s89gfa98fs09a-b0=="),
+let
+      // URL to send requests to
+      BaseUrl         = "https://google.com",
+      // 'Authorization' header content
+      Token           = "Api-Key 132hiunfash9132h4==",
       // (URL path parameter examples)
       EntitiesPerPage = 1000,
       StartTime       = "2022-01-01",
@@ -32,7 +34,7 @@ let
       GetJson = (Url) =>
       // Wait function alternative
           Function.InvokeAfter(() =>
-              let Options = [Headers=[ #"Authorization" = "Api-Key " & Token ], Timeout=#duration(0,0,0,200)],
+              let Options = [Headers=[ #"Authorization" = Token ], Timeout=#duration(0,0,0,200)],
                   RawData = Web.Contents(Url, Options),
                   Json    = Json.Document(RawData)
               in  Json, #duration(0,0,0,5)),
